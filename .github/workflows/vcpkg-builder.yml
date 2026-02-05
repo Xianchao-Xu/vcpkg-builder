@@ -28,6 +28,11 @@ jobs:
       - name: Setup MSVC Dev Environment
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Install MS-MPI System-wide
+        uses: mpi4py/setup-mpi@v1
+        with:
+          mpi: 'msmpi'
+
       - name: Setup vcpkg with GitHub Actions Binary Caching
         uses: lukka/run-vcpkg@v11
         with:
