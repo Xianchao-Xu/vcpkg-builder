@@ -14,7 +14,7 @@
         "msmpi",
         {"name": "netgen", "features": ["cgns", "jpeg", "occ"]},
         "nlohmann-json",
-        {"name": "opencascade", "features": ["freeimage", "freetype", "rapidjson", "tbb"]},
+        {"name": "opencascade", "features": ["freeimage", "freetype", "rapidjson", "tbb", "vtk"]},
         "opencl",
         "pugixml",
         "pybind11",

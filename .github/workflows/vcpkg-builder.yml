@@ -10,20 +10,11 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+      packages: write
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Get Build Metadata
-        id: meta
-        shell: pwsh
-        run: |
-          $shortSha = git rev-parse --short HEAD
-          $date = Get-Date -Format 'yyyyMMdd'
-          $basename = "my-dependencies-x64-windows-${date}-${shortSha}"
-          "BASENAME=$basename" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "TAG_NAME=build-${shortSha}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Setup MSVC Dev Environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -33,61 +24,18 @@ jobs:
         with:
           mpi: 'msmpi'
 
-      - name: Setup vcpkg with GitHub Actions Binary Caching
+      - name: Setup NuGet Credentials & Vcpkg Source
+        shell: pwsh
+        run: |
+          nuget sources add -Name "GitHub" `
+            -Source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" `
+            -UserName "${{ github.repository_owner }}" `
+            -Password "${{ secrets.GITHUB_TOKEN }}" `
+            -StorePasswordInClearText
+          echo "VCPKG_BINARY_SOURCES=clear;nuget,GitHub,readwrite" >> $env:GITHUB_ENV
+
+      - name: Run vcpkg (Manifest Mode)
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgJsonGlob: 'vcpkg.json'
-        env:
-          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-
-      - name: Install and Export Dependencies
-        shell: pwsh
-        run: |
-          $triplet = "x64-windows"
-          $outputName = "${{ env.BASENAME }}"
-          $currentDir = Get-Location
-          $installRoot = Join-Path $currentDir "vcpkg_installed"
-
-          Write-Host "Installing dependencies for triplet: $triplet"
-          vcpkg install --triplet $triplet --x-install-root="$installRoot"
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "vcpkg install failed"
-            exit 1
-          }
-
-          Write-Host "Exporting as ZIP: ${outputName}.zip"
-          vcpkg export --zip --triplet $triplet --output=$outputName --output-dir="$currentDir" --x-install-root="$installRoot"
-
-          if (-not (Test-Path "${outputName}.zip")) {
-            Write-Error "Export failed: ${outputName}.zip not found"
-            exit 1
-          }
-
-      - name: Generate SHA256 Checksum
-        shell: pwsh
-        run: |
-          $file = "${{ env.BASENAME }}.zip"
-          if (Test-Path $file) {
-            $hash = (Get-FileHash -Path $file -Algorithm SHA256).Hash.ToLower()
-            "$hash  $file" | Out-File -FilePath "${file}.sha256" -Encoding ascii
-          } else {
-            Write-Error "File $file not found for hashing"
-            exit 1
-          }
-
-      - name: Create GitHub Release and Upload Assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: "Prebuilt SDK (${{ env.TAG_NAME }})"
-          body: |
-            Built from commit `${{ github.sha }}` on ${{ runner.os }}.
-
-            **Verification (SHA256):**
-            ```bash
-            sha256sum -c ${{ env.BASENAME }}.zip.sha256
-            ```
-          files: |
-            ${{ env.BASENAME }}.zip
-            ${{ env.BASENAME }}.zip.sha256
-          prerelease: true
+          runVcpkgInstall: true
